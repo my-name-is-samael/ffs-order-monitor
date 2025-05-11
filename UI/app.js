@@ -1,14 +1,14 @@
 let app = {
   setup() {
     let showDriveThru = localStorage.getItem("driveThruState");
-    if (showDriveThru === undefined) {
+    if (showDriveThru === undefined || showDriveThru === null) {
       showDriveThru = true;
     } else {
       showDriveThru = showDriveThru === "true";
     }
 
     let showOther = localStorage.getItem("otherState");
-    if (showOther === undefined) {
+    if (showOther === undefined || showOther === null) {
       showOther = true;
     } else {
       showOther = showOther === "true";
