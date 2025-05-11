@@ -2,7 +2,7 @@
 OrderMonitor Mod for Fast Food Simulator
 
 ## Requirements:
-- [ModManager](https://github.com/my-name-is-samael/ffs-modmanager/tree/v1])
+- [ModManager](https://github.com/my-name-is-samael/ffs-modmanager/tree/v1)
 
 ## How to install
 - Download the latest release [here](https://github.com/my-name-is-samael/ffs-order-monitor/releases) (you will need to download the .zip file in the `Assets` section)
