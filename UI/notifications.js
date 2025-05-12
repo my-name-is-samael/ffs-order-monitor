@@ -103,7 +103,7 @@ const NotifCmp = {
   },
   computed: {
     transitionLine: () =>
-      `opacity ${NOTIF_SETTINGS.fade}ms easse-in-out, height ${NOTIF_SETTINGS.fade}ms ease-in-out`,
+      `opacity ${NOTIF_SETTINGS.fade}ms ease-in-out, height ${NOTIF_SETTINGS.fade}ms ease-in-out`,
   },
   watch: {
     notifications: function (a, b) {
