@@ -231,10 +231,11 @@ header > .checks {
   display: flex;
   align-items: center;
   gap: 0.5em;
+  flex-wrap: wrap;
 }
 
 .container > .orders > .order > .order-details > .article .product-wrapper {
-  display: flex;
+  display: inline-flex;
   align-items: center;
 }
 
