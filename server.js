@@ -51,27 +51,33 @@ let eventsArray = [];
 let ordersCache = fs.readFileSync(orders_export_path, "utf8");
 let ordersArray = [];
 
-// fs.watch(path.join(__dirname, "events_export.js"), (event, filename) => {
 fs.watch(events_export_path, (event, filename) => {
   const newEventsCache = fs.readFileSync(events_export_path, "utf8");
   if (newEventsCache.length > 0 && eventsCache !== newEventsCache) {
-    eventsCache = newEventsCache;
-    // parse eventsCache to eventsArray
-    const newEventsTrim = eventsCache.substring(31, eventsCache.length - 3);
-    eventsArray = JSON.parse(newEventsTrim);
-    io.emit("events_update", eventsArray);
+    try {
+      // parse eventsCache to eventsArray
+      const newEventsTrim = eventsCache.substring(eventsCache.indexOf("["), eventsCache.lastIndexOf("]") + 1);
+      eventsArray = JSON.parse(newEventsTrim);
+      eventsCache = newEventsCache;
+      io.emit("events_update", eventsArray);
+    } catch (error) {
+      console.error("Error parsing eventsCache:", error);
+    }
   }
 });
 
-// fs.watch(path.join(__dirname, "orders_export.js"), (event, filename) => {
 fs.watch(orders_export_path, (event, filename) => {
   const newOrdersCache = fs.readFileSync(orders_export_path, "utf8");
   if (newOrdersCache.length > 0 && ordersCache !== newOrdersCache) {
-    ordersCache = newOrdersCache;
-    // parse ordersCache to ordersArray
-    const newOrdersTrim = ordersCache.substring(31, ordersCache.length - 3);
-    ordersArray = JSON.parse(newOrdersTrim);
-    io.emit("orders_update", ordersArray);
+    try {
+      ordersCache = newOrdersCache;
+      // parse ordersCache to ordersArray
+      const newOrdersTrim = ordersCache.substring(ordersCache.indexOf("["), ordersCache.lastIndexOf("]") + 1);
+      ordersArray = JSON.parse(newOrdersTrim);
+      io.emit("orders_update", ordersArray);
+    } catch (error) {
+      console.error("Error parsing ordersCache:", error);
+    }
   }
 });
 
