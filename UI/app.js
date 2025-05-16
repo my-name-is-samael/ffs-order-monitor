@@ -109,6 +109,9 @@ let app = {
       socket.on('orders_update', (data) => {
         this.updateOrders(data);
       });
+      socket.on('reload', () => {
+        location.reload();
+      });
     };
     connectSocket();
   },

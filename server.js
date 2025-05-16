@@ -96,3 +96,23 @@ function initOrders() {
 
 initEvents();
 initOrders();
+
+// Development mode
+// monitor files in local folder for changes and emit event to tell client side to reload
+if (process.env.NODE_ENV === "development") {
+  console.log("Development mode");
+  function onFileChange(event, filename) {
+    if (filename === "server.js" || filename.startsWith(".git") || filename.startsWith("node_modules")) {
+      return;
+    }
+  
+    if (filename.endsWith(".js") || filename.endsWith(".html") || filename.endsWith(".css")) {
+      io.emit("reload");
+    }
+  }
+  fs.watch(__dirname, onFileChange);
+  fs.watch(path.join(__dirname, "/UI"), { recursive: true }, onFileChange);
+}
+
+
+
