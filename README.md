@@ -1,7 +1,8 @@
 # Modified ffs-order-monitor
 Modified OrderMonitor Mod for Fast Food Simulator
 
-This mod is still under development and not meant for non-developer users
+This mod is still under development and not meant for non-developer users.
+
 For those who looking for original version: https://www.nexusmods.com/fastfoodsimulator/mods/23
 
 
@@ -18,7 +19,8 @@ With the following modifications for now:
 
 Under the ~~hood~~ table
 - [ ] Refactor into a Vue project
-- [ ] push new event/order only instead of all event/order
+- [ ] Push new event/order only instead of all event/order
+- [ ] Build server into a standalone exe
 
 
 ## How to install
