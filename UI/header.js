@@ -2,7 +2,7 @@ const CheckCmp = {
   props: ["state"],
   template: `
         <div class="cursor-pointer checkbox" @click="$emit('toggle')">
-            <svg v-if="state === true" class="checked" width="200" height="200" viewBox="0 0 200 200">
+            <svg v-if="state === true" class="checked" width="100%" height="100%" viewBox="0 0 200 200">
                 <path d="M 195 7 L 77 144 L 38 84 L 4 89 L 66 199 L 90 200 L 197 6 Z" />
             </svg>
         </div>

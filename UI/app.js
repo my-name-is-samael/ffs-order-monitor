@@ -1,14 +1,14 @@
 let app = {
   setup() {
     let showDriveThru = localStorage.getItem("driveThruState");
-    if (showDriveThru === undefined) {
+    if (showDriveThru === undefined || showDriveThru === null) {
       showDriveThru = true;
     } else {
       showDriveThru = showDriveThru === "true";
     }
 
     let showOther = localStorage.getItem("otherState");
-    if (showOther === undefined) {
+    if (showOther === undefined || showOther === null) {
       showOther = true;
     } else {
       showOther = showOther === "true";
@@ -34,6 +34,7 @@ let app = {
       }
     },
     updateOrders(newOrders) {
+      console.log("updateOrders");
       this.orders = newOrders;
     },
     getOrders() {
@@ -50,6 +51,10 @@ let app = {
         }
       });
       return res;
+    },
+    updateNotifications(newNotifications) {
+      console.log("updateNotifications");
+      this.notifications = newNotifications;
     },
   },
   mounted() {
@@ -89,8 +94,26 @@ let app = {
         }
       }, 20);
     };
-    this.fetchProcess = setInterval(fetchOrders, 500);
-    fetchOrders();
+    // this.fetchProcess = setInterval(fetchOrders, 500);
+    // fetchOrders();
+    let connectSocket = () => {
+      var socket = io();
+      
+      socket.on('connect', () => {
+        console.log('connected to server');
+      });
+
+      socket.on('events_update', (data) => {
+        this.updateNotifications(data);
+      });
+      socket.on('orders_update', (data) => {
+        this.updateOrders(data);
+      });
+      socket.on('reload', () => {
+        location.reload();
+      });
+    };
+    connectSocket();
   },
   beforeDestroy() {
     clearInterval(this.fetchProcess);

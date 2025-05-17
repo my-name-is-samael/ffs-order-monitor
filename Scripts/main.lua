@@ -1,68 +1,114 @@
----@enum PedEvent
-local PED_EVENTS = {
-    ARRIVED = "ped_arrived",
-    ORDER_VALIDATED = "ped_order_validated",
-    SERVED_WELL = "ped_served_well",
-    SERVED_BADLY = "ped_served_badly",
-    LEFT = "ped_left",
-}
+-- UTILS
 
----@enum CarEvent
-local CAR_EVENTS = {
-    ARRIVED = "car_arrived",
-    ORDER_VALIDATED = "car_order_validated",
-    SERVED_WELL = "car_served_well",
-    SERVED_BADLY = "car_served_badly",
-    LEFT = "car_left",
-}
+function string.split(str, sep)
+    local t = {}
+    for s in string.gmatch(str, "([^" .. sep .. "]+)") do
+        table.insert(t, s)
+    end
+    return t
+end
 
----@class OrdersMonitor : ModModule
+function table.compare(arr1, arr2)
+    if #arr1 ~= #arr2 then
+        return false
+    end
+    for i, v in ipairs(arr1) do
+        if arr2[i] ~= v then
+            return false
+        end
+    end
+    return true
+end
+
+local function dirExists(path)
+    if string.sub(path, -1) ~= "/" then
+        -- add last slash if missing
+        path = path .. "/"
+    end
+    local status, err, code = os.rename(path, path)
+    if not status and code == 13 then
+        -- permission denied but folder exists
+        return true
+    end
+    return status
+end
+
+-- MOD
+
 local M = {
-    Author = "TontonSamael",
-    Version = 1,
+    -- CONSTANTS
+    logTag = "OrdersMonitor",
+    exportedOrdersFile = "Mods/OrdersMonitor/orders_export.js",
+    exportedEventsFile = "Mods/OrdersMonitor/events_export.js",
+    PED_EVENTS = {
+        ARRIVED = "ped_arrived",
+        ORDER_VALIDATED = "ped_order_validated",
+        SERVED_WELL = "ped_served_well",
+        SERVED_BADLY = "ped_served_badly",
+        LEFT = "ped_left",
+    },
+    CAR_EVENTS = {
+        ARRIVED = "car_arrived",
+        ORDER_VALIDATED = "car_order_validated",
+        SERVED_WELL = "car_served_well",
+        SERVED_BADLY = "car_served_badly",
+        LEFT = "car_left",
+    },
 
     -- DATA
-    ExportedOrdersFile = "Mods/OrdersMonitor/orders_export.js",
-    ExportedEventsFile = "Mods/OrdersMonitor/events_export.js",
     cachedOrders = {},
     cachedSortedOrders = {},
     tableCustomers = {},
     driveThruCustomers = {},
     events = {},
-    quitBypass = false,
 }
 
-local function GetSimpleSortedOrders(Orders)
+local function log(msg, ar)
+    msg = string.format("[%s] %s\n", M.logTag, tostring(msg))
+    print(msg)
+    if ar then
+        pcall(ar.Log, ar, msg)
+    end
+end
+
+function M.getOrderByID(id)
+    local orders = FindAllOf("BP_Order_C") or {}
+    for _, order in pairs(orders) do
+        if order:IsValid() and order:GetFName():ToString():find(id) then
+            return order
+        end
+    end
+    return nil
+end
+
+local function getSimpleSortedOrders(orders)
     local res = {}
     local iSortOrder = 1
-    while iSortOrder <= #Orders do
-        local id = Orders[iSortOrder]:GetFName():ToString()
+    while iSortOrder <= #orders do
+        local id = orders[iSortOrder]:GetFName():ToString()
         table.insert(res, id)
         iSortOrder = iSortOrder + 1
     end
     return res
 end
 
-local function ExportOrders(Orders)
-    if not Orders then
-        ---@type ABP_OrderManager_C|UObject
-        local OrderManager = FindFirstOf("BP_OrderManager_C")
-        if not OrderManager:IsValid() then
-            return
-        end
-        Orders = OrderManager.Orders
+function M.exportOrders(orders)
+    if not orders then
+        ---@class ABP_OrderManager_C
+        local orderManager = FindFirstOf("BP_OrderManager_C")
+        orders = orderManager.Orders
     end
     local function getOrder(orderID, callback)
         local i = 1
-        while i <= #Orders do
-            if Orders[i]:GetFName():ToString() == orderID then
-                callback(Orders[i])
+        while i <= #orders do
+            if orders[i]:GetFName():ToString() == orderID then
+                callback(orders[i])
                 break
             end
             i = i + 1
         end
     end
-    local sortedOrders = GetSimpleSortedOrders(Orders)
+    local sortedOrders = getSimpleSortedOrders(orders)
     local changes = false
 
     -- remove done orders
@@ -171,58 +217,44 @@ local function ExportOrders(Orders)
 
     if changes then
         local str = #M.cachedOrders > 0 and require("json").encode(M.cachedOrders) or "[]"
-        local file, err = io.open(M.ExportedOrdersFile, "w+")
+        local file, err = io.open(M.exportedOrdersFile, "w+")
         if file then
             file:write("function GET_ORDERS() { return " .. str .. "; }")
             file:close()
         else
-            Log(M, LOG.ERR, err)
+            log(err)
         end
     end
 end
 
-local function ExportEvents()
+local function exportEvents()
     local str = #M.events > 0 and require("json").encode(M.events) or "[]"
-    local file, err = io.open(M.ExportedEventsFile, "w+")
+    local file, err = io.open(M.exportedEventsFile, "w+")
     if file then
         file:write("function GET_EVENTS() { return " .. str .. "; }")
         file:close()
     else
-        Log(M, LOG.ERR, err)
+        log(err)
     end
 end
 
----@param ModManager ModManager
----@param isPed boolean
----@param event PedEvent|CarEvent
----@param tableNumber? number
-local function AddEvent(ModManager, isPed, event, tableNumber)
+function M.addEvent(isPed, event, tableNumber)
+    ---@class ABP_BakeryGameState_Ingame_C
+    local gameState = FindFirstOf("BP_BakeryGameState_Ingame_C")
     table.insert(M.events, {
-        time = ModManager.GameState.GameTime,
+        time = gameState.GameTime,
         event = event,
         table = tableNumber,
     })
-    ExportEvents()
+    exportEvents()
 end
 
-function ClearEvents()
+function M.clearEvents()
     M.events = {}
-    ExportEvents()
+    exportEvents()
 end
 
-function ClearOrders()
-    M.cachedOrders = {}
-    M.cachedSortedOrders = {}
-    local file, err = io.open(M.ExportedOrdersFile, "w+")
-    if file then
-        file:write("function GET_ORDERS() { return []; }")
-        file:close()
-    else
-        Log(M, LOG.ERR, err)
-    end
-end
-
-local function ExtractCustomerID(Customer)
+local function getCustomerID(Customer)
     local name = Customer:GetFullName()
     if not name then
         name = Customer:GetFName():ToString()
@@ -234,49 +266,43 @@ local function ExtractCustomerID(Customer)
     return tonumber(id)
 end
 
----@param ModManager ModManager
-local function InitHooks(ModManager)
-    ModManager.AddHook(M, "SetIsRestaurantRunning",
+M.hooks = {
+    SetIsRestaurantRunning = { -- on open restaurant trigger, clear events
+        key =
         "/Game/Blueprints/GameMode/GameState/BP_BakeryGameState_Ingame.BP_BakeryGameState_Ingame_C:SetIsRestaurantRunning",
-        function(M2, GameState, openState)
-            if openState:get() then
-                ClearEvents()
-                ClearOrders()
-            end
-        end,
-        function(M2) return M2.AppState == APP_STATES.IN_GAME end)
-    ModManager.AddHook(M, "QuitToMainMenu",
-        "/Game/UI/Ingame/EscapeMenu/W_EscapeMenu.W_EscapeMenu_C:OnMainMenuConfirmation",
-        function(M2, EscapeMenu, bConfirmed)
+        hookFn = function(self, GameState, openState)
+            M.clearEvents()
+            M.exportOrders({})
+        end
+    },
+    OnMainMenuConfirmation = { -- on return to menu trigger, clear events
+        key = "/Game/UI/Ingame/EscapeMenu/W_EscapeMenu.W_EscapeMenu_C:OnMainMenuConfirmation",
+        hookFn = function(self, bConfirmed)
             if bConfirmed:get() then
-                M.quitBypass = true
-                ExecuteWithDelay(500, function()
-                    M.quitBypass = false
-                end)
+                M.clearEvents()
+                M.exportOrders({})
             end
         end,
-        function(M2) return M2.AppState == APP_STATES.IN_GAME end)
-    ModManager.AddHook(M, "QuitGame",
-        "/Game/UI/Ingame/EscapeMenu/W_EscapeMenu.W_EscapeMenu_C:OnQuitConfirmation_Event",
-        function(M2, EscapeMenu, bConfirmed)
+    },
+    OnQuitConfirmation = { -- on quit game, clear events and orders
+        key = "/Game/UI/Ingame/EscapeMenu/W_EscapeMenu.W_EscapeMenu_C:OnQuitConfirmation_Event",
+        hookFn = function(self, bConfirmed)
             if bConfirmed:get() then
-                M.quitBypass = true
-                ExecuteWithDelay(500, function()
-                    M.quitBypass = false
-                end)
+                M.clearEvents()
+                M.exportOrders({})
             end
         end,
-        function(M2) return M2.AppState == APP_STATES.IN_GAME end)
-    ModManager.AddHook(M, "OnRepOrders",
-        "/Game/Blueprints/Gameplay/Order/BP_OrderManager.BP_OrderManager_C:OnRep_Orders",
-        function(M2, OrderManager)
-            ExportOrders(OrderManager:get().Orders)
-        end,
-        function(M2) return M2.AppState == APP_STATES.IN_GAME end)
-    ModManager.AddHook(M, "AddOrder",
-        "/Game/Blueprints/Gameplay/Order/BP_OrderManager.BP_OrderManager_C:AddOrder",
-        function(M2, OrderManager, OrderToAdd)
-            local customerId = ExtractCustomerID(OrderToAdd:get().Customer)
+    },
+    OnRepOrders = {
+        key = "/Game/Blueprints/Gameplay/Order/BP_OrderManager.BP_OrderManager_C:OnRep_Orders",
+        hookFn = function(self, OrderManager)
+            M.exportOrders(OrderManager:get().Orders)
+        end
+    },
+    AddOrder = { -- on customer order validated (peds and cars)
+        key = "/Game/Blueprints/Gameplay/Order/BP_OrderManager.BP_OrderManager_C:AddOrder",
+        hookFn = function(self, OrderManager, OrderToAdd)
+            local customerId = getCustomerID(OrderToAdd:get().Customer)
             local isPed = not OrderToAdd:get().Customer.CustomerDriveThruCar:IsValid()
             local tableNumber = OrderToAdd:get().Customer:GetCustomerTableNumber()
             if isPed then
@@ -290,101 +316,119 @@ local function InitHooks(ModManager)
                     served = false,
                 }
             end
-            AddEvent(ModManager, isPed, isPed and PED_EVENTS.ORDER_VALIDATED or CAR_EVENTS.ORDER_VALIDATED,
-                tableNumber)
-        end,
-        function(M2) return M2.AppState == APP_STATES.IN_GAME end)
-    ModManager.AddHook(M, "SetCustomerState",
-        "/Game/Blueprints/Characters/Customer/BP_Customer.BP_Customer_C:SetCustomerState",
-        function(M2, Customer, CustomerState)
+            M.addEvent(isPed, isPed and M.PED_EVENTS.ORDER_VALIDATED or M.CAR_EVENTS.ORDER_VALIDATED, tableNumber)
+        end
+    },
+    SetCustomerState = { -- on ped customer state update (when served and leave)
+        key = "/Game/Blueprints/Characters/Customer/BP_Customer.BP_Customer_C:SetCustomerState",
+        hookFn = function(self, Customer, CustomerState)
             local state = CustomerState:get()
-            local customerId = ExtractCustomerID(Customer:get())
+            local customerId = getCustomerID(Customer:get())
             if state == 5 then -- order served well
                 if M.tableCustomers[customerId] then
                     M.tableCustomers[customerId] = nil
-                    AddEvent(ModManager, true, PED_EVENTS.SERVED_WELL, M.tableCustomers[customerId].table)
+                    M.addEvent(true, M.PED_EVENTS.SERVED_WELL, M.tableCustomers[customerId].table)
                 end
             elseif state == 6 then -- leave / served badly
                 if M.tableCustomers[customerId] then
                     if M.tableCustomers[customerId].served then
                         -- served badly
-                        AddEvent(ModManager, true, PED_EVENTS.SERVED_BADLY, M.tableCustomers[customerId].table)
+                        M.addEvent(true, M.PED_EVENTS.SERVED_BADLY, M.tableCustomers[customerId].table)
                     else
                         -- leave
-                        AddEvent(ModManager, true, PED_EVENTS.LEFT, M.tableCustomers[customerId].table)
+                        M.addEvent(true, M.PED_EVENTS.LEFT, M.tableCustomers[customerId].table)
                     end
                     M.tableCustomers[customerId] = nil
-                elseif not M.quitBypass then
+                else
                     -- not validated order customer left
-                    AddEvent(ModManager, true, PED_EVENTS.LEFT)
+                    M.addEvent(true, M.PED_EVENTS.LEFT)
                 end
             end
-        end,
-        function(M2) return M2.AppState == APP_STATES.IN_GAME end)
-    ModManager.AddHook(M, "OnTrayPlacedOnTable",
+        end
+    },
+    OnTrayPlacedOnTable = { -- when placing a tray on a table, mark to distinguish between leave and served badly
+        key =
         "/Game/Blueprints/Gameplay/CustomerTables/BP_Customer_TableBase.BP_Customer_TableBase_C:TableArea_OnItemPlaced",
-        function(M2, TableBase, Item)
-            local id = ExtractCustomerID(TableBase:get().Customer)
+        hookFn = function(self, TableBase, Item)
+            local id = getCustomerID(TableBase:get().Customer)
             if M.tableCustomers[id] then
                 M.tableCustomers[id].served = true
             end
         end,
-        function(M2) return M2.AppState == APP_STATES.IN_GAME end)
-    ModManager.AddHook(M, "SayHello",
-        "/Game/Blueprints/Characters/Customer/BP_Customer.BP_Customer_C:SayHello_OnMulticast",
-        function(M2, Customer)
+    },
+    SayHello = { -- on customer arrived
+        key = "/Game/Blueprints/Characters/Customer/BP_Customer.BP_Customer_C:SayHello_OnMulticast",
+        hookFn = function(self, Customer)
             local isPed = not Customer:get().CustomerDriveThruCar:IsValid()
-            AddEvent(ModManager, isPed, isPed and PED_EVENTS.ARRIVED or CAR_EVENTS.ARRIVED)
+            M.addEvent(isPed, isPed and M.PED_EVENTS.ARRIVED or M.CAR_EVENTS.ARRIVED)
         end,
-        function(M2) return M2.AppState == APP_STATES.IN_GAME end)
-    ModManager.AddHook(M, "OnOrderDelivered",
-        "/Game/Blueprints/Gameplay/DriveThru/BP_DriveThruCar.BP_DriveThruCar_C:OnRep_bOrderDelivered",
-        function(M2, DriveThruCar)
-            local customerId = ExtractCustomerID(DriveThruCar:get().DriverCustomer)
+    },
+    OnOrderDelivered = { -- on car customer served
+        key = "/Game/Blueprints/Gameplay/DriveThru/BP_DriveThruCar.BP_DriveThruCar_C:OnRep_bOrderDelivered",
+        hookFn = function(self, DriveThruCar)
+            local customerId = getCustomerID(DriveThruCar:get().DriverCustomer)
             if M.driveThruCustomers[customerId] then
                 M.driveThruCustomers[customerId].served = true
             end
         end,
-        function(M2) return M2.AppState == APP_STATES.IN_GAME end)
-    ModManager.AddHook(M, "UpdatePatience",
-        "/Game/Blueprints/Gameplay/DriveThru/BP_DriveThruCar.BP_DriveThruCar_C:UpdatePatience",
-        function(M2, DriveThruCar)
-            local customerId = ExtractCustomerID(DriveThruCar:get().DriverCustomer)
+    },
+    UpdatePatience = { -- car customer ran out of patience
+        key = "/Game/Blueprints/Gameplay/DriveThru/BP_DriveThruCar.BP_DriveThruCar_C:UpdatePatience",
+        hookFn = function(self, DriveThruCar)
+            local customerId = getCustomerID(DriveThruCar:get().DriverCustomer)
             if DriveThruCar:get():HasRunOutOfPatience() then
                 if M.driveThruCustomers[customerId] then
-                    AddEvent(ModManager, false, CAR_EVENTS.LEFT, M.driveThruCustomers[customerId].table)
+                    M.addEvent(false, M.CAR_EVENTS.LEFT, M.driveThruCustomers[customerId].table)
                 else
-                    AddEvent(ModManager, false, CAR_EVENTS.LEFT)
+                    M.addEvent(false, M.CAR_EVENTS.LEFT)
                 end
             end
         end,
-        function(M2) return M2.AppState == APP_STATES.IN_GAME end)
-    ModManager.AddHook(M, "DriveThruLeavingEvent",
-        "/Game/Blueprints/Gameplay/DriveThru/BP_DriveThruCar.BP_DriveThruCar_C:DriveThruLeavingEvent",
-        function(M2, DriveThruCar)
-            local customerId = ExtractCustomerID(DriveThruCar:get().DriverCustomer)
+    },
+    DriveThruLeavingEvent = { -- on car customer leave
+        key = "/Game/Blueprints/Gameplay/DriveThru/BP_DriveThruCar.BP_DriveThruCar_C:DriveThruLeavingEvent",
+        hookFn = function(self, DriveThruCar)
+            local customerId = getCustomerID(DriveThruCar:get().DriverCustomer)
             local customerData = M.driveThruCustomers[customerId]
             if customerData then
                 if not customerData.served then
                     -- left
-                    AddEvent(ModManager, false, CAR_EVENTS.LEFT, customerData.table)
+                    M.addEvent(false, M.CAR_EVENTS.LEFT, customerData.table)
                 else
                     local score = DriveThruCar:get().DriverCustomer.ScoredOrderTip
-                    AddEvent(ModManager, false, score > 0 and CAR_EVENTS.SERVED_WELL or CAR_EVENTS.SERVED_BADLY,
+                    M.addEvent(false, score > 0 and M.CAR_EVENTS.SERVED_WELL or M.CAR_EVENTS.SERVED_BADLY,
                         customerData.table)
                 end
                 M.driveThruCustomers[customerId] = nil
             end
         end,
-        function(M2) return M2.AppState == APP_STATES.IN_GAME end)
+    }
+}
+function M.toggleHooks()
+    for _, h in pairs(M.hooks) do
+        if not h.enabled and (not h.condFn or h:condFn()) then
+            h.enabled, h.pre, h.post = pcall(RegisterHook, h.key, function(ctxt, ...) h:hookFn(ctxt, ...) end)
+        elseif h.enabled and h.condFn and not h:condFn() then
+            if pcall(UnregisterHook, h.key, h.pre, h.post) then
+                h.enabled, h.pre, h.pos = nil, nil, nil
+            end
+        end
+    end
 end
 
----@param ModManager ModManager
-function M.Init(ModManager)
-    M.ExportedOrdersFile = ModManager.GetAbsolutePath(M) .. "orders_export.js"
-    M.ExportedEventsFile = ModManager.GetAbsolutePath(M) .. "events_export.js"
+function M.onInit()
+    if dirExists("ue4ss/") then
+        -- detect beta version of UE4SS
+        M.exportedOrdersFile = "ue4ss/" .. M.exportedOrdersFile
+        M.exportedEventsFile = "ue4ss/" .. M.exportedEventsFile
+    end
+    LoopAsync(1000, function()
+        -- loop to enable hooks
+        M.toggleHooks()
+        return false
+    end)
 
-    InitHooks(ModManager)
+    log("Mod Loaded!")
 end
 
-return M
+M.onInit()
